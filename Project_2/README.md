@@ -12,7 +12,6 @@
 * PostgreSQL
 ----------
 ### Makefile:
-* Bash
 ```bash
 venv:
 		if [ -d .py ] ; \
@@ -29,8 +28,6 @@ run: venv
 ```
 
 ### Prepare Dataframe:
-* pandas
-* psycopg2
 ```python3
 pg_sslmode = environ.get("PGSSLMODE", "require")
 pg_user = environ.get("PGUSER", None)
@@ -137,8 +134,6 @@ filtered_iqr = df[(df['y'] < q1 - (1.5 * iqr)) | (df['y'] < q3 + (1.5 * iqr)) ]
 ```
 
 ### Create Model:
-* pandas
-* fbprophet (Stan)
 ```python3
 # params
 # instantiate Prophet Object - weekdays
@@ -190,7 +185,6 @@ forecast['yhat_lower'] = forecast['yhat_lower'].round(0).astype(int)
 ```
 
 ### Plot Forecast:
-* Plotly
 ```python3
 #plot the predicted value and observed value
 fig1 = go.Figure([
