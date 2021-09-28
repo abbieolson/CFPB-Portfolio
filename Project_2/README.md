@@ -9,6 +9,7 @@
   * Plotly
   * psycopg2
 * Bash
+* PostgreSQL
 ----------
 ### Makefile:
 * Bash
