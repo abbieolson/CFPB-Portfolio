@@ -25,7 +25,7 @@ venv:
 		fi;
 
 run: venv
-	.py/bin/python forecast.py
+	.py/bin/python get_ipls.py
 ```
 
 ### Functions and Global Variables:
