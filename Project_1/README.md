@@ -13,7 +13,6 @@
 * Bash
 ----------
 ### Makefile:
-* Bash
 ```bash
 venv:
 		if [ -d .py ] ; \
