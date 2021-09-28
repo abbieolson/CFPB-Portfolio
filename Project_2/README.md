@@ -1,4 +1,4 @@
-## Project 1 - Additive regression complaint forecast model
+## Project 2 - Additive regression complaint forecast model
 
 #### *Languages and Tools:*
 * Python
