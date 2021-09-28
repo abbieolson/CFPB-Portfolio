@@ -1,4 +1,4 @@
-## Project 1 - Classifier identifying and analyzing potential inaccuracies
+## Project 1 - Python-based web scraper
 
 #### *Languages and Tools:*
 * Python
