@@ -2,14 +2,15 @@
 
 #### *Languages and Tools:*
 * Python
-  * os
+  * requests
+  * re
+  * dateutil
   * datetime
   * pandas
-  * fbprophet (Stan)
-  * Plotly
-  * psycopg2
+  * csv
+  * math
+  * os
 * Bash
-* PostgreSQL
 ----------
 ### Makefile:
 * Bash
@@ -28,192 +29,202 @@ run: venv
 	.py/bin/python forecast.py
 ```
 
-### Prepare Dataframe:
-* pandas
-* psycopg2
+### Functions and Global Variables:
 ```python3
-pg_sslmode = environ.get("PGSSLMODE", "require")
-pg_user = environ.get("PGUSER", None)
-pg_password =  environ.get("PGPASSWORD", None)
-pg_host = environ.get("PGHOST", None)
-pg_port = environ.get("PGPORT", 5432)
-pg_database = environ.get("PG_DATABASE", None)
+def main():
+    # start timer
+    start = datetime.now()
 
-def create_db_connection(user_name, user_password, host_name, port_name, db_name, sslmode):
-    '''Function to create database connection'''
-    connection = None
-    connection = psycopg2.connect(user=user_name,
-                                password=user_password,
-                                host=host_name,
-                                port=port_name,
-                                database=db_name,
-                                sslmode=sslmode)
-    
-    print("PostgreSQL Database connection successful")
-    
-    # Create a cursor to perform database operations
-    cursor = connection.cursor()
-    # Executing a SQL query
-    cursor.execute("SELECT version();")
-    # Fetch result
-    record = cursor.fetchone()
-    return connection
+    ########################
+    ### global variables ###
+    ########################
 
-# establish connection
-connection = create_db_connection(pg_user, pg_password, pg_host, pg_port, pg_database, pg_sslmode)
+    user = environ.get("PGUSER", None)
+    password =  environ.get("PGPASSWORD", None)
+    out_path = environ.get("OUT_PATH", None)
+    cfpb_local = environ.get("DOMAIN", None)
+    input_csv = 'Investigations_Themes_IPL.csv'
+    census_year = 2019
 
-# get table from database
-postgreSQL_select_Query = "SELECT DATE(r.createddate) as day_of_createddate, \
-                                CASE EXTRACT(DOW FROM r.createddate) \
-                                                WHEN 0 THEN 'Sunday' \
-                                                WHEN 1 THEN 'Monday' \
-                                                WHEN 2 THEN 'Tuesday' \
-                                                WHEN 3 THEN 'Wednesday' \
-                                                WHEN 4 THEN 'Thursday' \
-                                                WHEN 5 THEN 'Friday' \
-                                                WHEN 6 THEN 'Saturday' \
-                                END as weekday_of_createddate, \
-                                DATE_TRUNC('week', r.createddate::date + 1):: date - 1 as week_of_createddate, \
-                                COUNT(Distinct r.casenumber) as complaint_count \
-                        FROM crdw.reporting r \
-                        WHERE r.type = 'Mosaic Complaint' \
-                        AND   (r.investigationdisposition <> 'Duplicate' or r.investigationdisposition is null) \
-                        AND   (r.reason_close_with_no_action not in ('Duplicate (CFPB Spotted)', 'Duplicate (Company Spotted)') or r.reason_close_with_no_action is null) \
-                        GROUP BY DATE(r.createddate), EXTRACT(DOW FROM r.createddate), DATE_TRUNC('week', r.createddate::date + 1):: date-1"
+    def wrap_error(func):
+        '''Function to keep script alive upon Exceptions'''
+        def func_wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except:
+                pass
+        return func_wrapper
 
+    def get_cookies(url, domain):
+        '''Function to get csrftoken'''
+        r_cookie = requests.get(url,
+                    verify=False, 
+                    auth=HTTPBasicAuth(user, password))
 
-# get df from database
-df1 = pd.read_sql_query(postgreSQL_select_Query, connection)
+        cookie_dict = r_cookie.cookies.get_dict(domain=domain)
+        return cookie_dict
 
-# select just the date and complaint columns
-df1 = df1[['day_of_createddate', 'complaint_count']]
+    def get_api(url, census_year):
+        '''Function converts complaint explorer URL to API URL'''
+        url = url.replace('&txt=', '&search_term=').replace('&company=', '&sent_to=')
 
-# drop the last row because it's the current date and contains incomplete reporting data
-df1 = df1[:-1]
+        url_temp = url.split('&')
+        sep = '&'
 
-# rename the column headers to match the prophet naming convention
-df1 = df1.rename(columns={'day_of_createddate': 'ds', 'complaint_count': 'y'})
+        issues = []
+        search = []
+        sent_to = []
+        product = []
+        entity = []
 
-# get date column in proper datetime format
-df1['ds'] =  pd.to_datetime(df1['ds'])
+        for i in url_temp:
+            if 'issue=' in i:
+                issues.append(i)
+            elif 'search_term=' in i:
+                search.append(i)
+            elif 'sent_to=' in i:
+                sent_to.append(i)
+            elif 'product=' in i:
+                product.append(i)
+            elif 'entity_name=' in i:
+                entity.append(i)
+                
+        par1 = [f'census_year={census_year}',
+                    'date_received_max=2011-07-01',
+                    'date_received_min=2011-07-01',
+                    'field=what_happened',
+                    'frm=0',
+                    'index_name=complaint-crdb-prod']
+        par2 = ['no_aggs=true']
+        par3 = ['size=1000',
+                'sort=created_date_desc']
 
-# get past two years
-two_yrs = (datetime.now() - timedelta(730)).strftime('%Y-%m-%d')
+        # the api url is very specific, hence this whacky addition problem            
+        par = par1 + issues + par2 + product + search + sent_to + entity + par3
+        link = 'https://complaints.data.cfpb.local/api/v2/complaints?' + sep.join(par)
+        link = link.replace('(', '%28').replace(')', '%29').replace("'", '%27').replace('*', '%2A').replace(',', '%2C')
+        return link
 
-# filter df for past two years
-df = df1[df1['ds'] >= two_yrs]
+    def get_page_cts(url):
+        '''Function to get page counts (large API requests have a size limit per page of either 100 or 1000)'''
+        r = requests.get(url, 
+                        cookies=cookie_dict,
+                        headers=headers,
+                        verify=False,
+                        stream=True,
+                        auth=HTTPBasicAuth(user, password)).json()
 
-# get summary count of all complaints from 7/21/11 to two years ago
-df_filt = df1[df1['ds'] < two_yrs]
-df_filt_sum = sum(df_filt['y'])
+        total = int(r['hits']['total'])
+        num_pages = math.ceil(total / 1000)
+        return num_pages
+        
+    @wrap_error
+    def get_ids(url, name, ipl, count, usr, pswd):
+        '''Function to write the theme, IPL, and casenumber to CSV'''
+        count = 0
+        for i in range(0, get_page_cts(url) + 1):
+            if i == 0:
+                pass
+            else:
+                new = url.split('frm=0', 1)[0] + 'frm=' + str(count) + url.split('frm=0', 1)[1]
+                count += 1000
 
-# separate weekdays and weekends. these will be modeled separately then recombined.
-weekdays = df[df['ds'].dt.dayofweek < 5]
-weekends = df[df['ds'].dt.dayofweek > 5]
+                r = requests.get(new, 
+                    cookies=cookie_dict,
+                    headers=headers,
+                    verify=False,
+                    stream=True,
+                    auth=HTTPBasicAuth(usr, pswd)).json()
 
-# get yesterday's date
-yesterday = (datetime.now() - timedelta(1)).strftime('%Y-%m-%d')
+                hits = r['hits']['hits']
 
-# total complaint counts
-print(f"Total complaints: {sum(df1['y'])}")
+                for i in hits:
+                    line1 = (name, ipl, i['_id'])
+                    writer1.writerow(line1)
 
-# calculate changepoints. these identify times when the probability distribution changes.
-# noise detection for input as changepoints date
-mean = df['y'].mean()
-stdev = df['y'].std()
+                    if i['_source']['is_socrata_published'] == 'Yes':
+                        line2 = (name, ipl, i['_id'])
+                        writer2.writerow(line2)
 
-q1 = df['y'].quantile(0.25)
-q3 = df['y'].quantile(0.75)
-iqr = q3 - q1
-high = mean + stdev
-low = mean - stdev
+    # get csrf token
+    token_pd = pd.read_csv(input_csv, nrows=1, usecols=['link'])
+    token_pd = token_pd.iloc[0]['link']
 
-# define this as changepoints in case you want to filter noise date using mean and standard deviation
-df_filtered = df[(df['y'] > high) | (df['y'] < low)]
-df_filtered_changepoints = df_filtered
+    # dict with csrf token and session id
+    cookie_dict = get_cookies(token_pd, cfpb_local)
+    csrf_token = cookie_dict['csrftoken']
 
-#define this as changepoints in case you want to filter noise date using IQR
-filtered_iqr = df[(df['y'] < q1 - (1.5 * iqr)) | (df['y'] < q3 + (1.5 * iqr)) ]
+    # headers from api (see "how to manually retrieve api urls")
+    headers = {
+        'Host': cfpb_local,
+        'Connection': 'keep-alive',
+        'Accept': 'application/json, text/plain, */*',
+        "sec-ch-ua": "\" Not;A Brand\";v=\"99\", \"Google Chrome\";v=\"91\", \"Chromium\";v=\"91\"",
+        "sec-ch-ua-mobile": "?0",
+        'X-CSRFToken': csrf_token,
+        'User-Agent': 'User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Referer': 'https://complaints.data.cfpb.local/',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9'
+    }  
 ```
 
-### Create Model:
-* pandas
-* fbprophet (Stan)
+### Main Script:
 ```python3
-# params
-# instantiate Prophet Object - weekdays
-weekday_prophet = Prophet(
-                  interval_width = 0.95,
-                  daily_seasonality = False,
-                  weekly_seasonality = True,
-                  yearly_seasonality = True,
-                  seasonality_mode='multiplicative',
-                  changepoint_prior_scale = 0.5,
-                  seasonality_prior_scale = 0.01,
-                  holidays_prior_scale=10)
+    # opens two csvs, one with all ipls, and the other with only those published in ccdb
+    with open(out_path + 'all_themes.csv', 'w', newline='') as f1, open(out_path + 'ccdb_themes.csv', 'w', newline='') as f2:
+        writer1 = csv.writer(f1)
+        writer2 = csv.writer(f2)
 
-weekday_prophet.add_country_holidays(country_name='US')
-#fit the model to training data , we try to use a whole of data as training data
-weekday_prophet.fit(weekdays)
+        # opens the files and writes out the headers
+        writer1.writerow(out_fields)
+        writer2.writerow(out_fields)
 
-weekday_future = weekday_prophet.make_future_dataframe(periods = 120, freq = 'd')
-weekday_forecast = weekday_prophet.predict(weekday_future)
-weekday_forecast = weekday_forecast[weekday_forecast['ds'].dt.dayofweek < 5]
+        # opens the input csv from the investigations team (edited)
+        with open(input_csv, 'r') as f:
+            reader = csv.DictReader(f, fieldnames=in_fields)
+            next(reader)
 
+            # gets the number of rows in the csv file
+            for index, row in enumerate(reader):
+                index_ct = index + 1
+                # converts the input url from the csv file to the api format
+                row['link'] = get_api(row['link'], census_year)
+                # makes minor adjustments to the credit reporting urls
+                # finds the dates in the url string (format: yyyy-mm-dd)
+                result = re.findall('\d{4}-\d{2}-\d{2}', row['link'])
 
-#instantiate Prophet Object - weekends
-weekend_prophet = Prophet(
-                  interval_width = 0.95,
-                  daily_seasonality = False,
-                  weekly_seasonality = True,
-                  yearly_seasonality = True,
-                  seasonality_mode='additive',
-                  changepoint_prior_scale = 0.5,
-                  seasonality_prior_scale = 0.01,
-                  holidays_prior_scale=10)
-    
-weekend_prophet.add_country_holidays(country_name='US')
-#fit the model to training data , we try to use a whole of data as training data
-weekend_prophet.fit(weekends)
+                # takes the count from num_weeks and creates another url with a new week
+                # increments by week for the length of num_count
+                while nums <= (num_months * index_ct):
+                    for i, j in enumerate(result):
+                        result[i] = (datetime.strptime(j, '%Y-%m-%d') + relativedelta(months =+ 1)).strftime('%Y-%m-%d')
+                    nums += 1
 
-weekend_future = weekend_prophet.make_future_dataframe(periods = 120, freq = 'd')
-weekend_forecast = weekend_prophet.predict(weekend_future)
-weekend_forecast = weekend_forecast[weekend_forecast['ds'].dt.dayofweek > 5]
+                    # splits the url so the dates can be edited
+                    url_temp = row['link'].split('&')
+                    # gets the date from the while loop (j) and adds it to "date_received_max=" for each url    
+                    for k, l in enumerate(url_temp):
+                        if 'date_received_max=' in l:
+                            this_month = datetime.strptime(j, '%Y-%m-%d')
+                            next_month = datetime.strptime(j, '%Y-%m-%d') + relativedelta(months =+ 1)
+                            total_days = (next_month - this_month).days
+                            url_temp[k] = 'date_received_max=' + str(datetime.strptime(j, "%Y-%m-%d").replace(day=total_days).date())
 
-# round forecasted complaints to the nearest whole number
-forecast = pd.concat([weekday_forecast, weekend_forecast], 0)
-forecast = forecast.sort_values(by='ds', ascending=True)
+                        # uses j to create "date_received_min=", subtracts by week 
+                        # makes each week 6 days long rather than 7 because elastic search is date inclusive (don't want duplicates)
+                        elif 'date_received_min=' in l:
+                            url_temp[k] = 'date_received_min=' + j
 
-forecast['yhat'] = forecast['yhat'].round(0).astype(int)
-forecast['yhat_upper'] = forecast['yhat_upper'].round(0).astype(int)
-forecast['yhat_lower'] = forecast['yhat_lower'].round(0).astype(int)
-```
+                    # joins the split url back together with '&' once the dates have been adjusted
+                    url = sep.join(url_temp)
+                    # function that actually gets the ids from the urls and writes them to a file
+                    get_ids(url, row['name'], row['IPL'], count, user, password)
 
-### Plot Forecast:
-* Plotly
-```python3
-#plot the predicted value and observed value
-fig1 = go.Figure([
-    go.Scatter(x=df['ds'], y=df['y'], name='actual complaint data'),
-    go.Scatter(x=forecast['ds'], y=forecast['yhat'], name='forecasted complaint data')
-])
-
-fig1.update_layout(legend=dict(
-    yanchor="top",
-    y=0.99,
-    xanchor="left",
-    x=0.005
-))
-
-
-fig1.update_layout(
-    title= f"Daily complaint forecast (trained on data from {datetime.strptime(two_yrs, '%Y-%m-%d').strftime('%B %d, %Y')} to {datetime.strptime(yesterday, '%Y-%m-%d').strftime('%B %d, %Y')})",
-    xaxis_title="Date (in days)",
-    yaxis_title="Complaint counts (per day)"
-)
-
-fig1.show()
-offline.plot(fig1, filename = INDEX_PATH, auto_open=False)
-
-connection.close()
+if __name__ == "__main__":
+    main()
+##### END
 ```
