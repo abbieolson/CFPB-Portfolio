@@ -1,65 +1,145 @@
-## Project 1 - Classifier identifying and analyzing potential inaccuracies
+## Project 1 - Additive regression complaint forecast model
 
 #### *Languages and Tools:*
 * Python
+  * os
+  * datetime
   * pandas
-  * NumPy
-  * SciPy
-  * scikit-learn
-  * seaborn
-  * Matplotlib
+  * fbprophet
   * Plotly
-  * Jupyter
-* HTML
+  * psycopg2
+* Bash
 ----------
-### Pre-Processing:
+### Makefile:
+* Bash
+```bash
+venv:
+		if [ -d .py ] ; \
+		then \
+			echo "virtualenv already exists. skipping"; \
+		else \
+			scl enable rh-python36 "virtualenv .py"; \
+			.py/bin/python -m pip install -U pip; \
+			.py/bin/python -m pip install -r requirements.txt; \
+		fi;
+
+run: venv
+	.py/bin/python forecast.py
+```
+
+### Prepare Dataframe:
 * pandas
-* seaborn
+* psycopg2
 ```python3
-# Make Dataframe and Plot Missing Values
-df = pd.read_csv('df.csv', low_memory=False)
-df = pd.DataFrame(df, index=df.index, columns=df.columns)
+pg_sslmode = environ.get("PGSSLMODE", "require")
+pg_user = environ.get("PGUSER", None)
+pg_password =  environ.get("PGPASSWORD", None)
+pg_host = environ.get("PGHOST", None)
+pg_port = environ.get("PGPORT", 5432)
+pg_database = environ.get("PG_DATABASE", None)
 
-df = df[(df.thing1 == "other_thing")]
-df = df[(df.thing2 == "another_thing")]
+def create_db_connection(user_name, user_password, host_name, port_name, db_name, sslmode):
+    '''Function to create database connection'''
+    connection = None
+    connection = psycopg2.connect(user=user_name,
+                                password=user_password,
+                                host=host_name,
+                                port=port_name,
+                                database=db_name,
+                                sslmode=sslmode)
+    
+    print("PostgreSQL Database connection successful")
+    
+    # Create a cursor to perform database operations
+    cursor = connection.cursor()
+    # Executing a SQL query
+    cursor.execute("SELECT version();")
+    # Fetch result
+    record = cursor.fetchone()
+    return connection
 
-target = 'target'
+# establish connection
+connection = create_db_connection(pg_user, pg_password, pg_host, pg_port, pg_database, pg_sslmode)
 
-# plot missing values
-ans = df.drop(target, axis=1).isnull().sum().sort_values(ascending=False)
-plt.figure(figsize=(12,2))
-sns.heatmap(pd.DataFrame(data=ans[ans>0], columns=['Missing Values']).T, annot=True, cbar=False, cmap='viridis', annot_kws={'rotation': 90})
+# get table from database
+postgreSQL_select_Query = "SELECT DATE(r.createddate) as day_of_createddate, \
+                                CASE EXTRACT(DOW FROM r.createddate) \
+                                                WHEN 0 THEN 'Sunday' \
+                                                WHEN 1 THEN 'Monday' \
+                                                WHEN 2 THEN 'Tuesday' \
+                                                WHEN 3 THEN 'Wednesday' \
+                                                WHEN 4 THEN 'Thursday' \
+                                                WHEN 5 THEN 'Friday' \
+                                                WHEN 6 THEN 'Saturday' \
+                                END as weekday_of_createddate, \
+                                DATE_TRUNC('week', r.createddate::date + 1):: date - 1 as week_of_createddate, \
+                                COUNT(Distinct r.casenumber) as complaint_count \
+                        FROM crdw.reporting r \
+                        WHERE r.type = 'Mosaic Complaint' \
+                        AND   (r.investigationdisposition <> 'Duplicate' or r.investigationdisposition is null) \
+                        AND   (r.reason_close_with_no_action not in ('Duplicate (CFPB Spotted)', 'Duplicate (Company Spotted)') or r.reason_close_with_no_action is null) \
+                        GROUP BY DATE(r.createddate), EXTRACT(DOW FROM r.createddate), DATE_TRUNC('week', r.createddate::date + 1):: date-1"
 
-plt.savefig('missing_vals.png')
+
+# get df from database
+df1 = pd.read_sql_query(postgreSQL_select_Query, connection)
+
+# select just the date and complaint columns
+df1 = df1[['day_of_createddate', 'complaint_count']]
+
+# drop the last row because it's the current date and contains incomplete reporting data
+df1 = df1[:-1]
+
+# rename the column headers to match the prophet naming convention
+df1 = df1.rename(columns={'day_of_createddate': 'ds', 'complaint_count': 'y'})
+
+# get date column in proper datetime format
+df1['ds'] =  pd.to_datetime(df1['ds'])
+
+# get past two years
+two_yrs = (datetime.now() - timedelta(730)).strftime('%Y-%m-%d')
+
+# filter df for past two years
+df = df1[df1['ds'] >= two_yrs]
+
+# get summary count of all complaints from 7/21/11 to two years ago
+df_filt = df1[df1['ds'] < two_yrs]
+df_filt_sum = sum(df_filt['y'])
+
+# separate weekdays and weekends. these will be modeled separately then recombined.
+weekdays = df[df['ds'].dt.dayofweek < 5]
+weekends = df[df['ds'].dt.dayofweek > 5]
+
+# get yesterday's date
+yesterday = (datetime.now() - timedelta(1)).strftime('%Y-%m-%d')
+
+# total complaint counts
+print(f"Total complaints: {sum(df1['y'])}")
+
+# calculate changepoints. these identify times when the probability distribution changes.
+# noise detection for input as changepoints date
+mean = df['y'].mean()
+stdev = df['y'].std()
+
+q1 = df['y'].quantile(0.25)
+q3 = df['y'].quantile(0.75)
+iqr = q3 - q1
+high = mean + stdev
+low = mean - stdev
+
+# define this as changepoints in case you want to filter noise date using mean and standard deviation
+df_filtered = df[(df['y'] > high) | (df['y'] < low)]
+df_filtered_changepoints = df_filtered
+
+#define this as changepoints in case you want to filter noise date using IQR
+filtered_iqr = df[(df['y'] < q1 - (1.5 * iqr)) | (df['y'] < q3 + (1.5 * iqr)) ]
 ```
 
-### Data Visualizations:
-* seaborn
-* Matplotlib
-* NumPy
-```python3
-# Correlation Heatmap
-def make_pair_plot(df):
-    '''Function to make correlation plots with seaborn'''
-    sns.set(style="white")
 
-    mask = np.triu(np.ones_like(df_corr, dtype=np.bool))
 
-    mask[np.triu_indices_from(mask)] = True
 
-    # matplotlib figure setup
-    f, ax = plt.subplots(figsize=(12, 12))
 
-    # custom colormap
-    cmap = sns.diverging_palette(250, 10, as_cmap=True)
 
-    # draw heatmap with aspect ratio
-    sns.heatmap(df_corr, mask=mask, cmap=cmap, vmax=.3, center=0,
-                square=True, linewidths=.5, cbar_kws={"shrink": .5})
-
-    # save with matplotlib
-    plt.savefig('corr_plot.png')
-```
 * Plotly
 ```python3
 # Interactive Bar Chart
