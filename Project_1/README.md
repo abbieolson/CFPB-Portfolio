@@ -65,28 +65,28 @@ def main():
 
     def get_api(url, census_year):
         '''Function converts complaint explorer URL to API URL'''
-        url = url.replace('&txt=', '&search_term=').replace('&company=', '&sent_to=')
+        url = url.replace('&redact=', '&redact=').replace('&redact=', '&redact=')
 
         url_temp = url.split('&')
         sep = '&'
 
-        issues = []
-        search = []
-        sent_to = []
-        product = []
-        entity = []
+        redact = []
+        redact = []
+        redact = []
+        redact = []
+        redact = []
 
         for i in url_temp:
-            if 'issue=' in i:
-                issues.append(i)
-            elif 'search_term=' in i:
-                search.append(i)
-            elif 'sent_to=' in i:
-                sent_to.append(i)
-            elif 'product=' in i:
-                product.append(i)
-            elif 'entity_name=' in i:
-                entity.append(i)
+            if 'redact=' in i:
+                redact.append(i)
+            elif 'redact=' in i:
+                redact.append(i)
+            elif 'redact=' in i:
+                redact.append(i)
+            elif 'redact=' in i:
+                redact.append(i)
+            elif 'redact=' in i:
+                redact.append(i)
                 
         par1 = [f'redact={census_year}',
                     'redact=2011-07-01',
