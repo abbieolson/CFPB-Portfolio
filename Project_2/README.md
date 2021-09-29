@@ -60,8 +60,8 @@ def create_db_connection(user_name, user_password, host_name, port_name, db_name
 connection = create_db_connection(pg_user, pg_password, pg_host, pg_port, pg_database, pg_sslmode)
 
 # get table from database
-postgreSQL_select_Query = "SELECT DATE(r.createddate) as day_of_createddate, \
-                                CASE EXTRACT(DOW FROM r.createddate) \
+postgreSQL_select_Query = "SELECT DATE(r.redact) as redact, \
+                                CASE EXTRACT(DOW FROM r.redact) \
                                                 WHEN 0 THEN 'Sunday' \
                                                 WHEN 1 THEN 'Monday' \
                                                 WHEN 2 THEN 'Tuesday' \
@@ -69,27 +69,27 @@ postgreSQL_select_Query = "SELECT DATE(r.createddate) as day_of_createddate, \
                                                 WHEN 4 THEN 'Thursday' \
                                                 WHEN 5 THEN 'Friday' \
                                                 WHEN 6 THEN 'Saturday' \
-                                END as weekday_of_createddate, \
-                                DATE_TRUNC('week', r.createddate::date + 1):: date - 1 as week_of_createddate, \
-                                COUNT(Distinct r.casenumber) as complaint_count \
+                                END as redact, \
+                                DATE_TRUNC('week', r.redact::date + 1):: date - 1 as redact, \
+                                COUNT(Distinct r.redact) as redact \
                         FROM crdw.reporting r \
-                        WHERE r.type = 'Mosaic Complaint' \
-                        AND   (r.investigationdisposition <> 'Duplicate' or r.investigationdisposition is null) \
-                        AND   (r.reason_close_with_no_action not in ('Duplicate (CFPB Spotted)', 'Duplicate (Company Spotted)') or r.reason_close_with_no_action is null) \
-                        GROUP BY DATE(r.createddate), EXTRACT(DOW FROM r.createddate), DATE_TRUNC('week', r.createddate::date + 1):: date-1"
+                        WHERE r.type = 'redact' \
+                        AND   (r.redact <> 'redact' or r.redact is null) \
+                        AND   (r.redact not in ('redact', 'redact') or r.redact is null) \
+                        GROUP BY DATE(r.redact), EXTRACT(redact FROM r.redact), DATE_TRUNC('week', r.redact::date + 1):: date-1"
 
 
 # get df from database
 df1 = pd.read_sql_query(postgreSQL_select_Query, connection)
 
 # select just the date and complaint columns
-df1 = df1[['day_of_createddate', 'complaint_count']]
+df1 = df1[['redact', 'redact']]
 
 # drop the last row because it's the current date and contains incomplete reporting data
 df1 = df1[:-1]
 
 # rename the column headers to match the prophet naming convention
-df1 = df1.rename(columns={'day_of_createddate': 'ds', 'complaint_count': 'y'})
+df1 = df1.rename(columns={'redact': 'ds', 'redact': 'y'})
 
 # get date column in proper datetime format
 df1['ds'] =  pd.to_datetime(df1['ds'])
@@ -188,8 +188,8 @@ forecast['yhat_lower'] = forecast['yhat_lower'].round(0).astype(int)
 ```python3
 #plot the predicted value and observed value
 fig1 = go.Figure([
-    go.Scatter(x=df['ds'], y=df['y'], name='actual complaint data'),
-    go.Scatter(x=forecast['ds'], y=forecast['yhat'], name='forecasted complaint data')
+    go.Scatter(x=df['ds'], y=df['y'], name='actual'),
+    go.Scatter(x=forecast['ds'], y=forecast['yhat'], name='forecasted')
 ])
 
 fig1.update_layout(legend=dict(
@@ -201,9 +201,9 @@ fig1.update_layout(legend=dict(
 
 
 fig1.update_layout(
-    title= f"Daily complaint forecast (trained on data from {datetime.strptime(two_yrs, '%Y-%m-%d').strftime('%B %d, %Y')} to {datetime.strptime(yesterday, '%Y-%m-%d').strftime('%B %d, %Y')})",
+    title= f"redact (trained on data from {datetime.strptime(two_yrs, '%Y-%m-%d').strftime('%B %d, %Y')} to {datetime.strptime(yesterday, '%Y-%m-%d').strftime('%B %d, %Y')})",
     xaxis_title="Date (in days)",
-    yaxis_title="Complaint counts (per day)"
+    yaxis_title="redact (per day)"
 )
 
 fig1.show()
