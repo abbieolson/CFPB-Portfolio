@@ -88,19 +88,19 @@ def main():
             elif 'entity_name=' in i:
                 entity.append(i)
                 
-        par1 = [f'census_year={census_year}',
-                    'date_received_max=2011-07-01',
-                    'date_received_min=2011-07-01',
-                    'field=what_happened',
-                    'frm=0',
-                    'index_name=complaint-crdb-prod']
-        par2 = ['no_aggs=true']
-        par3 = ['size=1000',
-                'sort=created_date_desc']
+        par1 = [f'redact={census_year}',
+                    'redact=2011-07-01',
+                    'redact=2011-07-01',
+                    'redact=redact',
+                    'redact=0',
+                    'redact=redact']
+        par2 = ['redact=true']
+        par3 = ['redact=1000',
+                'redact=redact']
 
         # the api url is very specific, hence this whacky addition problem            
         par = par1 + issues + par2 + product + search + sent_to + entity + par3
-        link = 'https://complaints.data.cfpb.local/api/v2/complaints?' + sep.join(par)
+        link = 'https://redact.redact.redact.redact/api/v2/redact?' + sep.join(par)
         link = link.replace('(', '%28').replace(')', '%29').replace("'", '%27').replace('*', '%2A').replace(',', '%2C')
         return link
 
@@ -225,5 +225,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-##### END
+##### END blaaah
 ```
