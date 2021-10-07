@@ -11,6 +11,7 @@
   * math
   * os
 * Bash
+* PostgreSQL
 ----------
 ### Makefile:
 ```bash
@@ -226,4 +227,205 @@ def main():
 if __name__ == "__main__":
     main()
 ##### END
+```
+### PostgreSQL Join for Tableau Extract
+```sql
+With 
+complaint as (select r.casenumber, r.matched_company, r.analyticalproduct, r.analyticalissue, r.analyticalsubproduct
+from crdw.reporting r
+where r.type = 'Mosaic Complaint'
+and   (r.investigationdisposition <> 'Duplicate' or r.investigationdisposition is null)
+and   (r.reason_close_with_no_action not in ('Duplicate (CFPB Spotted)', 'Duplicate (Company Spotted)') or r.reason_close_with_no_action is null)
+),
+
+-- furnishing exclusion
+furnishing_exclusion as (
+select a from (VALUES 
+('Credit Karma, Inc.'), 
+('TRANSUNION INTERMEDIATE HOLDINGS, INC.'), 
+('Experian Information Solutions Inc.'), 
+('EQUIFAX, INC.'), 
+('VERISK ANALYTICS INC'), 
+('Fidelity National Information Services, Inc. (FNIS)'), 
+('Clarity Services'), 
+('Contemporary Information Corp'), 
+('CORELOGIC INC'), 
+('EARLY WARNING SERVICES, LLC'), 
+('Factor Trust'), 
+('FIRST ADVANTAGE CORPORATION'), 
+('Innovis'), 
+('LEXISNEXIS'), 
+('MIB Group, Inc.'), 
+('MicroBilt / PRBC (formerly CL Verify)'), 
+('ID Analytics, Inc.'), 
+('Screening Reports Inc.'), 
+('First Data Corporation')) s(a)
+),
+
+-- furnishing issues
+furnishing_issues as (
+select a from (VALUES 
+('Unable to get your credit report or credit score'),
+('Problem with fraud alerts or security freezes'),
+('Incorrect information on your report'),
+('Improper use of your report'),
+('Credit monitoring or identity theft protection services'),
+('Problem with a credit reporting company''s investigation into an existing problem'),
+('Identity theft protection or other monitoring services'),
+('Problem with a company''s investigation into an existing issue')) s(a)
+)
+
+---------
+
+select casenumber,
+       unnest(array_remove(array[mortgage_servicing_c,
+                                 mortgage_origination_c,
+                                 auto_servicing_c,
+                                 auto_origination_c,
+                                 title_loan_c,
+                                 personal_loan_c,
+                                 payday_loan_c,
+                                 federal_student_loan_c,
+                                 private_student_loan_c,
+                                 credit_card_c,
+                                 deposit_c,
+                                 credit_reporting_3ncrc_c,
+                                 credit_reporting_small_crc_c,
+                                 debt_collection_c,
+                                 money_service_c,
+                                 prepaid_card_c,
+                                 furnishing_c], null)) as ipl
+   
+from (
+
+select  c.casenumber,
+
+-- mortgage servicing
+case when c.analyticalproduct = 'Mortgage' 
+and c.analyticalissue in ('Trouble during payment process',
+                          'Struggling to pay mortgage',
+                          'Incorrect information on your report',
+                          'Problem with a credit reporting company''s investigation into an existing problem',
+                          'Credit monitoring or identity theft protection services')
+then 'Mortgage servicing' 
+end as mortgage_servicing_c,
+
+-- mortgage origination
+case when c.analyticalproduct = 'Mortgage' 
+and c.analyticalissue in ('Applying for a mortgage or refinancing an existing mortgage',
+                          'Closing on a mortgage',
+                          'Improper use of your report',
+                          'Unable to get your credit report or credit score',
+                          'Problem with fraud alerts or security freezes')
+then 'Mortgage origination' 
+end as mortgage_origination_c,
+
+-- auto servicing
+case when c.analyticalproduct = 'Vehicle loan or lease' 
+and c.analyticalissue in ('Managing the loan or lease',
+                          'Problems at the end of the loan or lease',
+                          'Struggling to pay your loan',
+                          'Incorrect information on your report',
+                          'Problem with a credit reporting company''s investigation into an existing problem',
+                          'Credit monitoring or identity theft protection services')
+then 'Auto servicing' 
+end as auto_servicing_c,
+
+-- auto origination
+case when c.analyticalproduct = 'Vehicle loan or lease' 
+and c.analyticalissue in ('Getting a loan or lease',
+                          'Improper use of your report',
+                          'Unable to get your credit report or credit score',
+                          'Problem with fraud alerts or security freezes')
+then 'Auto origination' 
+end as auto_origination_c,
+
+-- title loan
+case when c.analyticalproduct = 'Title loan'
+then 'Title loan' 
+end as title_loan_c,
+
+-- personal loan
+case when c.analyticalproduct = 'Personal loan'
+then 'Personal loan' 
+end as personal_loan_c,
+
+-- payday loan
+case when c.analyticalproduct = 'Payday loan'
+then 'Payday loan' 
+end as payday_loan_c,
+
+-- federal student loan
+case when c.analyticalsubproduct = 'Federal student loan'
+then 'Federal Student loan' 
+end as federal_student_loan_c,
+
+-- private student loan
+case when c.analyticalsubproduct = 'Private student loan'
+then 'Private Student loan' 
+end as private_student_loan_c,
+
+-- credit card
+case when c.analyticalproduct = 'Credit card' 
+then 'Credit card' 
+end as credit_card_c,
+
+-- deposit
+case when c.analyticalproduct = 'Checking or savings' 
+then 'Deposit account' 
+end as deposit_c,
+
+-- credit reporting 3ncrc
+case when c.analyticalproduct = 'Credit or consumer reporting'
+and c.matched_company in ('TRANSUNION INTERMEDIATE HOLDINGS, INC.', 
+                          'Experian Information Solutions Inc.', 
+                          'EQUIFAX, INC.')
+then 'Credit reporting 3NCRC' 
+end as credit_reporting_3ncrc_c,
+
+-- credit reporting, small crc
+case when c.analyticalproduct = 'Credit or consumer reporting'
+and c.matched_company in ('VERISK ANALYTICS INC',
+                          'Fidelity National Information Services, Inc. (FNIS)',
+                          'Clarity Services',
+                          'Contemporary Information Corp',
+                          'CORELOGIC INC',
+                          'SELLING SOURCE, LLC',
+                          'EARLY WARNING SERVICES, LLC',
+                          'Factor Trust',
+                          'FIRST ADVANTAGE CORPORATION',
+                          'Global Payments Check Services, Inc.',
+                          'Innovis',
+                          'LEXISNEXIS',
+                          'MIB Group, Inc.',
+                          'MicroBilt / PRBC (formerly CL Verify)',
+                          'ID Analytics, Inc.',
+                          'Screening Reports Inc.',
+                          'First Data Corporation')
+then 'Credit reporting-small CRC' 
+end as credit_reporting_small_crc_c,
+
+-- debt collection
+case when c.analyticalproduct = 'Debt collection' 
+then 'Debt collection' 
+end as debt_collection_c,
+
+-- money service
+case when c.analyticalproduct = 'Money transfer or service, virtual currency'
+then 'Money services' 
+end as money_service_c,
+
+-- prepaid card
+case when c.analyticalproduct = 'Prepaid card' 
+then 'Prepaid card' 
+end as prepaid_card_c,
+
+-- furnishing
+case when c.analyticalissue in (select * from furnishing_issues) 
+and c.matched_company not in (select * from furnishing_exclusion)
+then 'Furnishing' 
+end as furnishing_c
+
+from complaint c
+    )
 ```
