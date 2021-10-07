@@ -228,7 +228,7 @@ if __name__ == "__main__":
     main()
 ##### END
 ```
-### PostgreSQL Join for Tableau Extract
+### PostgreSQL for Tableau Extract
 ```sql
 With 
 complaint as (select r.casenumber, r.matched_company, r.analyticalproduct, r.analyticalissue, r.analyticalsubproduct
