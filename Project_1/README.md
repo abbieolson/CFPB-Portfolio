@@ -176,7 +176,6 @@ def main():
 
 ### Main Script:
 ```python3
-	
     # headers and url separator
     in_fields = ['name', 'IPL', 'link']
     out_fields = ['theme', 'IPL', 'casenumber']
