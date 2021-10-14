@@ -89,15 +89,17 @@ def main():
             elif 'redact=' in i:
                 redact.append(i)
                 
-        par1 = [f'redact={census_year}',
-                    'redact=2011-07-01',
-                    'redact=2011-07-01',
-                    'redact=redact',
-                    'redact=0',
-                    'redact=redact']
-        par2 = ['redact=true']
-        par3 = ['redact=1000',
-                'redact=redact']
+        par1 = [f'census_year={census_year}',
+                    'date_received_max=2011-07-01', ### FOR BULK RUN ###
+                    'date_received_min=2011-07-01',
+                    # 'date_received_max=' + (datetime.now() - relativedelta(months = 1)).strftime('%Y-%m-%d'), ### FOR SUBSEQUENT RUNS ###
+                    # 'date_received_min='+ (datetime.now() - relativedelta(months = 1)).strftime('%Y-%m-%d'),
+                    'field=what_happened',
+                    'frm=0',
+                    'index_name=complaint-crdb-prod']
+        par2 = ['no_aggs=true']
+        par3 = ['size=1000',
+                'sort=created_date_desc']
 
         # the api url is very specific, hence this whacky addition problem            
         par = par1 + issues + par2 + product + search + sent_to + entity + par3
@@ -174,11 +176,36 @@ def main():
 
 ### Main Script:
 ```python3
+	
+    # headers and url separator
+    in_fields = ['name', 'IPL', 'link']
+    out_fields = ['theme', 'IPL', 'casenumber']
+    sep = '&'
+ 
+    ### FOR BULK RUN ###
+    # calculates the number of months since cfpb's opening day
+    d1 = datetime(2011, 6, 1)
+    d2 = datetime.now()
+    num_months = (d2.year - d1.year) * 12 + (d2.month - d1.month)
+ 
+    ### FOR SUBSEQUENT RUNS ###
+    # d1 = datetime.now()
+    # d2 = datetime.now() + relativedelta(months=1)
+    # num_months = (d2.year - d1.year) * 12 + (d2.month - d1.month)
+ 
+    # total rows in the input csv
+    index_ct = 0
+    # gets the count of the number of months by the total rows in the input csv
+    nums = 0
+    # used by the get_ids() function
+    count = 0
+ 
     # opens two csvs, one with all ipls, and the other with only those published in ccdb
-    with open(out_path + 'all_themes.csv', 'w', newline='') as f1, open(out_path + 'ccdb_themes.csv', 'w', newline='') as f2:
+    with open(out_path + 'all_themes.csv', 'a+', newline='') as f1, open(out_path + 'ccdb_themes.csv', 'a+', newline='') as f2:
         writer1 = csv.writer(f1)
         writer2 = csv.writer(f2)
-
+ 
+    	### COMMENT THE OUT_FIELDS OUT FOR SUBSEQUENT
         # opens the files and writes out the headers
         writer1.writerow(out_fields)
         writer2.writerow(out_fields)
