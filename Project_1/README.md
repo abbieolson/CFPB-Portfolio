@@ -32,19 +32,43 @@ run: venv
 ### Functions and Global Variables:
 ```python3
 def main():
-    # start timer
-    start = datetime.now()
 
     ########################
     ### global variables ###
     ########################
 
-    user = environ.get("PGUSER", None)
-    password =  environ.get("PGPASSWORD", None)
-    out_path = environ.get("OUT_PATH", None)
+    pg_sslmode = environ.get("PGSSLMODE", "require")
+    pg_user = environ.get("PGUSER", None)
+    pg_password =  environ.get("PGPASSWORD", None)
+    pg_host = environ.get("PGHOST", None)
+    pg_port = environ.get("PGPORT", 5432)
+    pg_database = environ.get("PG_DATABASE", None)
     cfpb_local = environ.get("DOMAIN", None)
+
+    # input csv from the investigtations team (edited somewhat)
     input_csv = 'Investigations_Themes_IPL.csv'
+
+    # census year
     census_year = 2019
+    
+    def create_db_connection(user_name, user_password, host_name, port_name, db_name, sslmode):
+        '''Function to create database connection'''
+        connection = None
+        connection = psycopg2.connect(user=user_name,
+                                    password=user_password,
+                                    host=host_name,
+                                    port=port_name,
+                                    database=db_name,
+                                    sslmode=sslmode)
+        
+        print("PostgreSQL Database connection successful")
+        
+        # Create a cursor to perform database operations
+        cursor = connection.cursor()
+        # Executing a SQL query
+        cursor.execute("SELECT version();")
+        # Fetch result
+        return connection
 
     def wrap_error(func):
         '''Function to keep script alive upon Exceptions'''
@@ -59,35 +83,35 @@ def main():
         '''Function to get csrftoken'''
         r_cookie = requests.get(url,
                     verify=False, 
-                    auth=HTTPBasicAuth(user, password))
+                    auth=HTTPBasicAuth(pg_user, pg_password))
 
         cookie_dict = r_cookie.cookies.get_dict(domain=domain)
         return cookie_dict
 
     def get_api(url, census_year):
         '''Function converts complaint explorer URL to API URL'''
-        url = url.replace('&redact=', '&redact=').replace('&redact=', '&redact=')
+        url = url.replace('&txt=', '&search_term=').replace('&company=', '&sent_to=')
 
         url_temp = url.split('&')
         sep = '&'
 
-        redact = []
-        redact = []
-        redact = []
-        redact = []
-        redact = []
+        issues = []
+        search = []
+        sent_to = []
+        product = []
+        entity = []
 
         for i in url_temp:
-            if 'redact=' in i:
-                redact.append(i)
-            elif 'redact=' in i:
-                redact.append(i)
-            elif 'redact=' in i:
-                redact.append(i)
-            elif 'redact=' in i:
-                redact.append(i)
-            elif 'redact=' in i:
-                redact.append(i)
+            if 'issue=' in i:
+                issues.append(i)
+            elif 'search_term=' in i:
+                search.append(i)
+            elif 'sent_to=' in i:
+                sent_to.append(i)
+            elif 'product=' in i:
+                product.append(i)
+            elif 'entity_name=' in i:
+                entity.append(i)
                 
         par1 = [f'census_year={census_year}',
                     'date_received_max=2011-07-01', ### FOR BULK RUN ###
@@ -103,7 +127,7 @@ def main():
 
         # the api url is very specific, hence this whacky addition problem            
         par = par1 + issues + par2 + product + search + sent_to + entity + par3
-        link = 'https://redact.redact.redact.redact/api/v2/redact?' + sep.join(par)
+        link = 'https://complaints.data.cfpb.local/api/v2/complaints?' + sep.join(par)
         link = link.replace('(', '%28').replace(')', '%29').replace("'", '%27').replace('*', '%2A').replace(',', '%2C')
         return link
 
@@ -114,7 +138,7 @@ def main():
                         headers=headers,
                         verify=False,
                         stream=True,
-                        auth=HTTPBasicAuth(user, password)).json()
+                        auth=HTTPBasicAuth(pg_user, pg_password)).json()
 
         total = int(r['hits']['total'])
         num_pages = math.ceil(total / 1000)
@@ -141,12 +165,9 @@ def main():
                 hits = r['hits']['hits']
 
                 for i in hits:
-                    line1 = (name, ipl, i['_id'])
-                    writer1.writerow(line1)
-
-                    if i['_source']['is_socrata_published'] == 'Yes':
-                        line2 = (name, ipl, i['_id'])
-                        writer2.writerow(line2)
+                    line1 = [(name, ipl, i['_id'])]
+                    cursor.execute(insert_query, line1)
+                    connection.commit()
 
     # get csrf token
     token_pd = pd.read_csv(input_csv, nrows=1, usecols=['link'])
@@ -176,79 +197,78 @@ def main():
 
 ### Main Script:
 ```python3
+    # establish connection
+    connection = create_db_connection(pg_user, pg_password, pg_host, pg_port, pg_database, pg_sslmode)
+    cursor = connection.cursor()
+
+    # query to insert into database table
+    insert_query = """INSERT INTO crdw.themes_ipls(theme, ipl, casenumber) VALUES %s;"""
+
+    # CLEAR TABLE BEFORE INITIAL RUN THEN COMMENT OUT
+    delete_query = """DELETE FROM crdw.themes_ipls;"""
+    cursor.execute(delete_query)
+
     # headers and url separator
     in_fields = ['name', 'IPL', 'link']
-    out_fields = ['theme', 'IPL', 'casenumber']
     sep = '&'
- 
+
     ### FOR BULK RUN ###
     # calculates the number of months since cfpb's opening day
     d1 = datetime(2011, 6, 1)
     d2 = datetime.now()
     num_months = (d2.year - d1.year) * 12 + (d2.month - d1.month)
- 
+
     ### FOR SUBSEQUENT RUNS ###
     # d1 = datetime.now()
     # d2 = datetime.now() + relativedelta(months=1)
     # num_months = (d2.year - d1.year) * 12 + (d2.month - d1.month)
- 
+
     # total rows in the input csv
     index_ct = 0
     # gets the count of the number of months by the total rows in the input csv
     nums = 0
     # used by the get_ids() function
     count = 0
- 
-    # opens two csvs, one with all ipls, and the other with only those published in ccdb
-    with open(out_path + 'all_themes.csv', 'a+', newline='') as f1, open(out_path + 'ccdb_themes.csv', 'a+', newline='') as f2:
-        writer1 = csv.writer(f1)
-        writer2 = csv.writer(f2)
- 
-    	### COMMENT THE OUT_FIELDS OUT FOR SUBSEQUENT
-        # opens the files and writes out the headers
-        writer1.writerow(out_fields)
-        writer2.writerow(out_fields)
 
-        # opens the input csv from the investigations team (edited)
-        with open(input_csv, 'r') as f:
-            reader = csv.DictReader(f, fieldnames=in_fields)
-            next(reader)
+    # opens the input csv from the investigations team (edited)
+    with open(input_csv, 'r') as f:
+        reader = csv.DictReader(f, fieldnames=in_fields)
+        next(reader)
 
-            # gets the number of rows in the csv file
-            for index, row in enumerate(reader):
-                index_ct = index + 1
-                # converts the input url from the csv file to the api format
-                row['link'] = get_api(row['link'], census_year)
-                # makes minor adjustments to the credit reporting urls
-                # finds the dates in the url string (format: yyyy-mm-dd)
-                result = re.findall('\d{4}-\d{2}-\d{2}', row['link'])
+        # gets the number of rows in the csv file
+        for index, row in enumerate(reader):
+            index_ct = index
+            # converts the input url from the csv file to the api format
+            row['link'] = get_api(row['link'], census_year)
+            # finds the dates in the url string (format: yyyy-mm-dd)
+            result = re.findall('\d{4}-\d{2}-\d{2}', row['link'])
 
-                # takes the count from num_weeks and creates another url with a new week
-                # increments by week for the length of num_count
-                while nums <= (num_months * index_ct):
-                    for i, j in enumerate(result):
-                        result[i] = (datetime.strptime(j, '%Y-%m-%d') + relativedelta(months =+ 1)).strftime('%Y-%m-%d')
-                    nums += 1
+            # takes the count from num_months and creates another url with a new month
+            # increments by month for the length of nums
+            while nums <= (num_months * index_ct):
+                for i, j in enumerate(result):
+                    result[i] = (datetime.strptime(j, '%Y-%m-%d') + relativedelta(months = 1)).strftime('%Y-%m-%d')
+                nums += 1
 
-                    # splits the url so the dates can be edited
-                    url_temp = row['link'].split('&')
-                    # gets the date from the while loop (j) and adds it to "date_received_max=" for each url    
-                    for k, l in enumerate(url_temp):
-                        if 'date_received_max=' in l:
-                            this_month = datetime.strptime(j, '%Y-%m-%d')
-                            next_month = datetime.strptime(j, '%Y-%m-%d') + relativedelta(months =+ 1)
-                            total_days = (next_month - this_month).days
-                            url_temp[k] = 'date_received_max=' + str(datetime.strptime(j, "%Y-%m-%d").replace(day=total_days).date())
+                # splits the url so the dates can be edited
+                url_temp = row['link'].split('&')
+                # gets the date from the while loop (j) and adds it to "date_received_max=" for each url    
+                for k, l in enumerate(url_temp):
+                    if 'date_received_max=' in l:
+                        this_month = datetime.strptime(j, '%Y-%m-%d')
+                        next_month = datetime.strptime(j, '%Y-%m-%d') + relativedelta(months = 1)
+                        total_days = (next_month - this_month).days
+                        url_temp[k] = 'date_received_max=' + str(datetime.strptime(j, "%Y-%m-%d").replace(day=total_days).date())
 
-                        # uses j to create "date_received_min=", subtracts by week 
-                        # makes each week 6 days long rather than 7 because elastic search is date inclusive (don't want duplicates)
-                        elif 'date_received_min=' in l:
-                            url_temp[k] = 'date_received_min=' + j
+                    # uses j to create "date_received_min=", subtracts by week 
+                    # makes each week 6 days long rather than 7 because elastic search is date inclusive (don't want duplicates)
+                    elif 'date_received_min=' in l:
+                        url_temp[k] = 'date_received_min=' + j
 
-                    # joins the split url back together with '&' once the dates have been adjusted
-                    url = sep.join(url_temp)
-                    # function that actually gets the ids from the urls and writes them to a file
-                    get_ids(url, row['name'], row['IPL'], count, user, password)
+                # joins the split url back together with '&' once the dates have been adjusted
+                url = sep.join(url_temp)
+                # function that actually gets the ids from the urls and writes them to a file
+                get_ids(url, row['name'], row['IPL'], count, pg_user, pg_password)
 
 if __name__ == "__main__":
     main()
