@@ -282,38 +282,13 @@ and   (r.reason_close_with_no_action not in ('Duplicate (CFPB Spotted)', 'Duplic
 -- furnishing exclusion
 furnishing_exclusion as (
 select a from (VALUES 
-('Credit Karma, Inc.'), 
-('TRANSUNION INTERMEDIATE HOLDINGS, INC.'), 
-('Experian Information Solutions Inc.'), 
-('EQUIFAX, INC.'), 
-('VERISK ANALYTICS INC'), 
-('Fidelity National Information Services, Inc. (FNIS)'), 
-('Clarity Services'), 
-('Contemporary Information Corp'), 
-('CORELOGIC INC'), 
-('EARLY WARNING SERVICES, LLC'), 
-('Factor Trust'), 
-('FIRST ADVANTAGE CORPORATION'), 
-('Innovis'), 
-('LEXISNEXIS'), 
-('MIB Group, Inc.'), 
-('MicroBilt / PRBC (formerly CL Verify)'), 
-('ID Analytics, Inc.'), 
-('Screening Reports Inc.'), 
-('First Data Corporation')) s(a)
+('REDACT')) s(a)
 ),
 
 -- furnishing issues
 furnishing_issues as (
 select a from (VALUES 
-('Unable to get your credit report or credit score'),
-('Problem with fraud alerts or security freezes'),
-('Incorrect information on your report'),
-('Improper use of your report'),
-('Credit monitoring or identity theft protection services'),
-('Problem with a credit reporting company''s investigation into an existing problem'),
-('Identity theft protection or other monitoring services'),
-('Problem with a company''s investigation into an existing issue')) s(a)
+('REDACT')) s(a)
 )
 
 ---------
@@ -343,41 +318,25 @@ select  c.casenumber,
 
 -- mortgage servicing
 case when c.analyticalproduct = 'Mortgage' 
-and c.analyticalissue in ('Trouble during payment process',
-                          'Struggling to pay mortgage',
-                          'Incorrect information on your report',
-                          'Problem with a credit reporting company''s investigation into an existing problem',
-                          'Credit monitoring or identity theft protection services')
+and c.analyticalissue in ('REDACT')
 then 'Mortgage servicing' 
 end as mortgage_servicing_c,
 
 -- mortgage origination
 case when c.analyticalproduct = 'Mortgage' 
-and c.analyticalissue in ('Applying for a mortgage or refinancing an existing mortgage',
-                          'Closing on a mortgage',
-                          'Improper use of your report',
-                          'Unable to get your credit report or credit score',
-                          'Problem with fraud alerts or security freezes')
+and c.analyticalissue in ('REDACT')
 then 'Mortgage origination' 
 end as mortgage_origination_c,
 
 -- auto servicing
 case when c.analyticalproduct = 'Vehicle loan or lease' 
-and c.analyticalissue in ('Managing the loan or lease',
-                          'Problems at the end of the loan or lease',
-                          'Struggling to pay your loan',
-                          'Incorrect information on your report',
-                          'Problem with a credit reporting company''s investigation into an existing problem',
-                          'Credit monitoring or identity theft protection services')
+and c.analyticalissue in ('REDACT')
 then 'Auto servicing' 
 end as auto_servicing_c,
 
 -- auto origination
 case when c.analyticalproduct = 'Vehicle loan or lease' 
-and c.analyticalissue in ('Getting a loan or lease',
-                          'Improper use of your report',
-                          'Unable to get your credit report or credit score',
-                          'Problem with fraud alerts or security freezes')
+and c.analyticalissue in ('REDACT')
 then 'Auto origination' 
 end as auto_origination_c,
 
@@ -418,31 +377,13 @@ end as deposit_c,
 
 -- credit reporting 3ncrc
 case when c.analyticalproduct = 'Credit or consumer reporting'
-and c.matched_company in ('TRANSUNION INTERMEDIATE HOLDINGS, INC.', 
-                          'Experian Information Solutions Inc.', 
-                          'EQUIFAX, INC.')
+and c.matched_company in ('REDACT')
 then 'Credit reporting 3NCRC' 
 end as credit_reporting_3ncrc_c,
 
 -- credit reporting, small crc
 case when c.analyticalproduct = 'Credit or consumer reporting'
-and c.matched_company in ('VERISK ANALYTICS INC',
-                          'Fidelity National Information Services, Inc. (FNIS)',
-                          'Clarity Services',
-                          'Contemporary Information Corp',
-                          'CORELOGIC INC',
-                          'SELLING SOURCE, LLC',
-                          'EARLY WARNING SERVICES, LLC',
-                          'Factor Trust',
-                          'FIRST ADVANTAGE CORPORATION',
-                          'Global Payments Check Services, Inc.',
-                          'Innovis',
-                          'LEXISNEXIS',
-                          'MIB Group, Inc.',
-                          'MicroBilt / PRBC (formerly CL Verify)',
-                          'ID Analytics, Inc.',
-                          'Screening Reports Inc.',
-                          'First Data Corporation')
+and c.matched_company in ('REDACT')
 then 'Credit reporting-small CRC' 
 end as credit_reporting_small_crc_c,
 
