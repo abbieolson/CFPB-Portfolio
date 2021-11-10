@@ -32,6 +32,7 @@ run: venv
 ### Functions and Global Variables:
 ```python3
 def main():
+
     pg_sslmode = environ.get("PGSSLMODE", "require")
     pg_user = environ.get("PGUSER", None)
     pg_password =  environ.get("PGPASSWORD", None)
