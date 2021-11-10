@@ -86,7 +86,7 @@ def main():
 
     def get_api(url, census_year):
         '''Function converts complaint explorer URL to API URL'''
-        url = url.replace('&txt=', '&search_term=').replace('&company=', '&sent_to=')
+        url = url.replace('&redact=', '&redact=').replace('&redact=', '&redact=')
 
         url_temp = url.split('&')
         sep = '&'
@@ -98,15 +98,15 @@ def main():
         entity = []
 
         for i in url_temp:
-            if 'issue=' in i:
+            if 'redact=' in i:
                 issues.append(i)
-            elif 'search_term=' in i:
+            elif 'redact=' in i:
                 search.append(i)
-            elif 'sent_to=' in i:
+            elif 'redact=' in i:
                 sent_to.append(i)
-            elif 'product=' in i:
+            elif 'redact=' in i:
                 product.append(i)
-            elif 'entity_name=' in i:
+            elif 'redact=' in i:
                 entity.append(i)
                 
         par1 = [f'census_year={census_year}',
@@ -114,16 +114,16 @@ def main():
                     'date_received_min=2011-07-01',
                     # 'date_received_max=' + (datetime.now() - relativedelta(months = 1)).strftime('%Y-%m-%d'), ### FOR SUBSEQUENT RUNS ###
                     # 'date_received_min='+ (datetime.now() - relativedelta(months = 1)).strftime('%Y-%m-%d'),
-                    'field=what_happened',
-                    'frm=0',
-                    'index_name=complaint-crdb-prod']
+                    'redact=redact',
+                    'redact=0',
+                    'redact=redact']
         par2 = ['no_aggs=true']
         par3 = ['size=1000',
                 'sort=created_date_desc']
 
         # the api url is very specific, hence this whacky addition problem            
         par = par1 + issues + par2 + product + search + sent_to + entity + par3
-        link = 'https://complaints.data.cfpb.local/api/v2/complaints?' + sep.join(par)
+        link = 'https://redact.redact.redact.local/api/v2/redact?' + sep.join(par)
         link = link.replace('(', '%28').replace(')', '%29').replace("'", '%27').replace('*', '%2A').replace(',', '%2C')
         return link
 
@@ -148,7 +148,7 @@ def main():
             if i == 0:
                 pass
             else:
-                new = url.split('frm=0', 1)[0] + 'frm=' + str(count) + url.split('frm=0', 1)[1]
+                new = url.split('redact=0', 1)[0] + 'redact=' + str(count) + url.split('redact=0', 1)[1]
                 count += 1000
 
                 r = requests.get(new, 
@@ -198,10 +198,10 @@ def main():
     cursor = connection.cursor()
 
     # query to insert into database table
-    insert_query = """INSERT INTO crdw.themes_ipls(theme, ipl, casenumber) VALUES %s;"""
+    insert_query = """INSERT INTO redact.redact(redact, redact, redact) VALUES %s;"""
 
     # CLEAR TABLE BEFORE INITIAL RUN THEN COMMENT OUT
-    delete_query = """DELETE FROM crdw.themes_ipls;"""
+    delete_query = """DELETE FROM redact.redact;"""
     cursor.execute(delete_query)
 
     # headers and url separator
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 ```sql
 With 
 complaint as (select r.casenumber, r.matched_company, r.analyticalproduct, r.analyticalissue, r.analyticalsubproduct
-from crdw.reporting r
+from redact.redact r
 where r.type = 'Mosaic Complaint'
 and   (r.investigationdisposition <> 'Duplicate' or r.investigationdisposition is null)
 and   (r.reason_close_with_no_action not in ('Duplicate (CFPB Spotted)', 'Duplicate (Company Spotted)') or r.reason_close_with_no_action is null)
